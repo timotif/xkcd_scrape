@@ -3,9 +3,10 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import shutil
+from urllib.parse import urlparse
 
 URL = "https://xkcd.com/"
-FOLDER = "./comics/"
+PAGE_FOLDER = "./pages/"
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Scrape XKCD comics")
@@ -22,24 +23,51 @@ def validate_arguments(args):
         args.from_page = args.to_page
         args.to_page = temp
 
-def find_link(page):
-    response = requests.get(URL + page.__str__())
+def download_page(page_number):
+    response = requests.get(f"{URL}/{page_number}")
     response.raise_for_status()
-    website_html = response.text
-    soup = BeautifulSoup(website_html, "html.parser")
-    return soup.find(id="comic").find("img")["src"]
+    print(response.status_code)
+    main_html = response.content
+    return main_html
+
+def find_resources(page, page_number):
+    resources = []
+    soup = BeautifulSoup(page, "html.parser")
+    for tag in soup.find_all(["img", "link", "script"]):
+        if tag.has_attr("src"):
+            resources.append(tag["src"])
+            local_resource_url = os.path.basename(urlparse(tag["src"]).path)
+            tag["src"] = local_resource_url
+        elif tag.name == "link":
+            resources.append(tag["href"])
+            local_resource_url = os.path.basename(urlparse(tag["href"]).path)
+            tag["href"] = local_resource_url
+    with open (f"{PAGE_FOLDER}/{page_number}/index.html", "wb") as file:
+        file.write(soup.encode())
+    return resources
+
+def download_resources(page_number, resources):
+    for resource in resources:
+        if resource.startswith("//"):
+            resource = "https:" + resource
+        elif resource.startswith("/"):
+            resource = URL + resource
+        filename = os.path.basename(urlparse(resource).path)
+        print("Resource "+ resource + " filename " + filename)
+        response = requests.get(resource)
+        with open (f"{PAGE_FOLDER}{page_number}/{filename}", "wb") as file:
+            file.write(response.content)
 
 def main():
     args = parse_arguments()
     validate_arguments(args)
-    shutil.rmtree(FOLDER, ignore_errors=True)
-    os.mkdir(FOLDER)
+    shutil.rmtree(PAGE_FOLDER, ignore_errors=True)
+    os.mkdir(PAGE_FOLDER)
     for p in range(args.from_page, args.to_page + 1):    
-        img_url = find_link(p)
-        img_response = requests.get(URL + img_url)
-        img_response.raise_for_status()
-        with open(f"{FOLDER}comic{p}.jpg", mode="wb") as file:
-            file.write(img_response.content)
+        os.mkdir(f"{PAGE_FOLDER}{p}")
+        main_html = download_page(p)
+        resources = find_resources(main_html, p)
+        download_resources(p, resources)
 
 if __name__ == "__main__":
     main()
