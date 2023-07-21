@@ -33,6 +33,8 @@ def download_page(page_number):
 def find_resources(page, page_number):
     resources = []
     soup = BeautifulSoup(page, "html.parser")
+    # Append to a list all tag objects with src attribute and stylesheet
+    # Update the tag in the soup to point to the local resource
     for tag in soup.find_all(["img", "link", "script"]):
         if tag.has_attr("src"):
             resources.append(tag["src"])
@@ -42,10 +44,13 @@ def find_resources(page, page_number):
             resources.append(tag["href"])
             local_resource_url = os.path.basename(urlparse(tag["href"]).path)
             tag["href"] = local_resource_url
+    # Save the updated soup to a file
     with open (f"{PAGE_FOLDER}/{page_number}/index.html", "wb") as file:
         file.write(soup.encode())
     return resources
 
+# Fix the each resource URLs to absolute path
+# Save the resource to a file
 def download_resources(page_number, resources):
     for resource in resources:
         if resource.startswith("//"):
